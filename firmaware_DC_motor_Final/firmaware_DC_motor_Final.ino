@@ -3,6 +3,8 @@
    Code based on Eng. Wagner Rambo project
    
 ======================================================================================================== */
+// --- Include Libraries ---
+#include <VirtualWire.h>
 
 // ========================================================================================================
 // --- Hardware Mapping to motor 1 ---
@@ -19,8 +21,13 @@
 #define    M2_motor1       10                     //Controle In1 do driver L298N
 #define    M2_motor2       11                    //Controle In2 do driver L298N
 
+// --- RF Receiver Hardware Mapping ---
+#define RX_Pin 12
+
 // ========================================================================================================
 // --- Global Variables ---
+
+// --- Motors Variables ---
 byte      Encoder_C1Last;
 int       M1_pulse_number,
           step = 0,
@@ -34,6 +41,9 @@ int       M2_pulse_number,
           
 boolean M2_direction_m;
 
+// --- RF Variables ---
+byte messageLength = VW_MAX_MESSAGE_LEN; //Maximum message length
+byte message[VW_MAX_MESSAGE_LEN]; //buffer to store the sent data
 
 // ========================================================================================================
 // --- initial setup ---
@@ -41,6 +51,7 @@ void setup()
 {
   Serial.begin(115200);
  
+  //Motor setup
   pinMode(M1_encoder_C1,  INPUT);                //Set C1 to read the encoder
   pinMode(M1_encoder_C2,  INPUT);                //Set C2 to read the encoder
   pinMode(M1_motor1,     OUTPUT);                //Set the first output to motor control (in1 of driver)
@@ -51,25 +62,48 @@ void setup()
   pinMode(M2_motor1,     OUTPUT);                //Set the first output to motor control (in1 of driver)
   pinMode(M2_motor2,     OUTPUT);                //Set the second output to motor control (in3 of driver)
  
-  
   attachInterrupt(0, M1_count_pulses, CHANGE);      //External interrupt 0 in state change
   attachInterrupt(0, M2_count_pulses, CHANGE);      //
-    
+  
+  //RF setup
+  Serial.println("Waiting data...");
+  vw_set_rx_pin(RX_Pin);
+  vw_setup(4000);
+  vw_rx_start();
+
 } //end setup
 
 // ========================================================================================================
 void loop()
 {
+  if (vw_get_message(message, &messageLength)){
+
+    Serial.println("Message:"); 
+
+    for(int i = 0; i < messageLength; i++){
+      if(message[i] != 0) {
+        Serial.print("byte "); 
+        Serial.print(i); 
+        Serial.print(": "); 
+        Serial.println(message[i]); 
+
+        switch(message[i]) {
+          case 1: motor_control_left();
+                  break;
+          case 2: motor_control_right();
+                  break;
+          case 3: motor_control_forward();
+                  break;
+          case 4: motor_control_turn();
+                  break;
+          case 5: default: break;
+        }
+      }
+    }
+  }
+
    //motor_control_stop();                           //chama função para controle do motor
    //delay(2000);
-   motor_control_right();                           //chama função para controle do motor
-   delay(2000);                                   //taxa de atualização
-   motor_control_front();                           //chama função para controle do motor
-   delay(2000);
-   motor_control_left();
-   delay(2000);
-   motor_control_turn();
-   delay(2000);
 } //end loop
 
 // ========================================================================================================
@@ -81,10 +115,10 @@ void active_motor(int M1_motor1_state, int M1_motor2_state, int M2_motor1_state,
   digitalWrite(M1_motor2, M1_motor2_state);                //
   digitalWrite(M2_motor1, M2_motor1_state);                //
   digitalWrite(M2_motor2, M2_motor2_state);                //
+
   Serial.print("Direction: ");
   Serial.println(direction); //print the direction
-  M1_pwm_value = 80; //Variable to control the speed of the motor
-  M2_pwm_value = 80; //
+
   analogWrite(M1_pwm_out, M1_pwm_value);          //Generates a proporcional PWM at the motor
   analogWrite(M2_pwm_out, M2_pwm_value);          //
 }
@@ -155,7 +189,7 @@ void motor_control_left()
   motor_control_stop();                        //stop the car bot after move
 } //end left move
 
-void motor_control_front()
+void motor_control_forward()
 { 
   while (step <= 200)                             //step maior ou igual a 512? (metade do valor de 10 bits 1024)
   {  
@@ -180,7 +214,7 @@ void motor_control_front()
     restart_pulse_number();
   }
   motor_control_stop();                        //stop the car bot after move
-} //end front move
+} //end forward move
 
 void motor_control_turn()
 {  
@@ -233,46 +267,44 @@ void motor_control_stop()
 // ========================================================================================================
 // --- Function to count the encoders pulses ---
 // 
-// *baseada no artigo do site http://www.arduinoecia.com.br/2016/10/motor-dc-com-encoder-arduino.html
+// *based on the following article: http://www.arduinoecia.com.br/2016/10/motor-dc-com-encoder-arduino.html
 //
 //
 void M1_count_pulses()
 {
-  int M1_Lstate = digitalRead(M1_encoder_C1);       //Lê estado de M1_encoder_C1 e armazena em M1_Lstate
+  int M1_Lstate = digitalRead(M1_encoder_C1);       //Read M1_encoder_C1 state and stores in M1_Lstate
   
-  if(!Encoder_C1Last && M1_Lstate)               //Encoder_C1Last igual a zero e M1_Lstate diferente de zero?
-  {                                           //Sim...
-    int val = digitalRead(M1_encoder_C2);        //Lê estado de M1_encoder_C2 e armazena em M1_val
+  if(!Encoder_C1Last && M1_Lstate)               //is Encoder_C1Last equal to zero and M1_Lstate different of zero?
+  {                                           //Yes...
+    int M1_C2_state = digitalRead(M1_encoder_C2);        //Read M1_encoder_C1 state and stores in M1_C2_state
 
-    if(!val && direction_m) direction_m = false;      //Sentido reverso
-    
-    else if(val && !direction_m) direction_m = true;  //Sentido direto
+    if(!M1_C2_state && direction_m) direction_m = false;      //Reverse direction
+    else if(M1_C2_state && !direction_m) direction_m = true;  //Direct direction
   } //end if 
  
-  Encoder_C1Last = M1_Lstate;                    //Encoder_C1Last recebe o valor antigo
+  Encoder_C1Last = M1_Lstate;
   
-  if(!direction_m)  M1_pulse_number++;           //incrementa número do pulso se direction limpa
-  else              M1_pulse_number--;           //senão decrementa    
+  if(!direction_m)  M1_pulse_number++;           //increment pulse number if direction_m is clean
+  else              M1_pulse_number--;           //else decrement 
 } //end M1_count_pulses
 
 void M2_count_pulses()
 {
-  int M2_Lstate = digitalRead(M2_encoder_C1);       //Lê estado de M1_encoder_C1 e armazena em M2_Lstate
+  int M2_Lstate = digitalRead(M2_encoder_C1);       //Read M2_encoder_C1 state and stores in M2_Lstate
   
-  if(!M2_Encoder_C1Last && M2_Lstate)               //Encoder_C1Last igual a zero e M2_Lstate diferente de zero?
-  {                                           //Sim...
-    int val2 = digitalRead(M2_encoder_C2);        //Lê estado de M1_encoder_C2 e armazena em M2_val
+  if(!M2_Encoder_C1Last && M2_Lstate)               //is M2_Encoder_C1Last equal to zero and M1_Lstate different of zero?
+  {                                           //Yes...
+    int M2_C2_state = digitalRead(M2_encoder_C2);        //Read M2_encoder_C2 state and stores in M2_C2_state
     
-    if(!val2 && M2_direction_m) M2_direction_m = false;      //Sentido reverso
-    
-    else if(val2 && !M2_direction_m) M2_direction_m = true;  //Sentido direto
+    if(!M2_C2_state && M2_direction_m) M2_direction_m = false;      //Reverse direction
+    else if(M2_C2_state && !M2_direction_m) M2_direction_m = true;  //Direct direction
     
   } //end if 
  
-  M2_Encoder_C1Last = M2_Lstate;                    //Encoder_C1Last recebe o valor antigo
+  M2_Encoder_C1Last = M2_Lstate;
 
-  if(!M2_direction_m)  M2_pulse_number++;           //incrementa número do pulso se direction limpa
-  else                 M2_pulse_number--;           //senão decrementa
+  if(!M2_direction_m)  M2_pulse_number++;           //increment pulse number if M2_direction_m is clean
+  else                 M2_pulse_number--;           //else decrement 
 } //end M2_count_pulses
 
 
