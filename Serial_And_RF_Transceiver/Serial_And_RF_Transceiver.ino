@@ -7,6 +7,12 @@
 #define MaxBufferSize 64
 byte TX_buffer[MaxBufferSize];
 
+int countReceivedBytes = 0;
+
+String receivedString = "vazio ainda";
+int receivedInt;
+//char receivedChar;
+
 void setup() {
   Serial.begin(9600);
 
@@ -16,41 +22,45 @@ void setup() {
 }
 
 void loop() {
-  clearBuffer();
+//  clearBuffer();
 
-  if(Serial.available() > 0){
+  if(Serial.available()){
     // Read the data sent by Rapberry via serial
-    // int bytesReadQuantity = Serial.readBytes(TX_buffer, MaxBufferSize);
-    String receivedString = Serial.readString();
-
-    int receivedInt = atoi(receivedString.c_str());
-    Serial.println(receivedInt);
+    byte receivedNumber = Serial.read();
     
-    TX_buffer[0] = receivedInt;
+    //Stores the received data in a buffer
+    TX_buffer[countReceivedBytes] = receivedNumber;
+    countReceivedBytes++;
 
-    int bytesReadQuantity = 1;
-  
-    //Check if the read data is correct  
-    if (bytesReadQuantity > 0) { //verify if the buffer size is greater than 0
-      Serial.println("Read Data: ");
-      for(int i = 0; i < bytesReadQuantity; i++){
-        Serial.print("Byte ");
-        Serial.print(i);
-        Serial.print(": ");
-        Serial.println(TX_buffer[i]);
+    //Send the data when gets the start number (5)
+    if(receivedNumber == 5){
+      //send data twice      
+      for(int i = 0; i < 2; i++){
+        vw_send(TX_buffer, MaxBufferSize);
+        vw_wait_tx();
+        delay(1000);
       }
-    }
-    //Envia os dados pela RF com duas tentativas automáticas    
-    for(int i = 0; i < 2; i++){
-      vw_send(TX_buffer, MaxBufferSize);
-      vw_wait_tx();
-      delay(1000);
-    }
+
+      int bytesReadQuantity = countReceivedBytes;
+    
+      //Print the read data  
+      if (bytesReadQuantity > 0) { //verify if the buffer size is biggest than 0
+        Serial.println("Read Data: ");
+        for(int i = 0; i < bytesReadQuantity; i++){
+          Serial.print("Byte ");
+          Serial.print(i);
+          Serial.print(": ");
+          Serial.println(TX_buffer[i]);
+        }
+      }
+      clearBuffer();
+    }    
   }
 }
 
 void clearBuffer(){
   for(int i = 0; i < MaxBufferSize; i++){
     TX_buffer[i] = 0;
+    countReceivedBytes = 0;
   }
 }
